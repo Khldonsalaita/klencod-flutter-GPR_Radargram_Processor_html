@@ -1,0 +1,983 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>معالج صور رادار اختراق الأرض الاحترافي | Advanced GPR Processor</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Chart.js for A-Scan Waveform Plot -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700;800&display=swap');
+        
+        body {
+            font-family: 'Tajawal', sans-serif;
+            background-color: #0d1117;
+            color: #c9d1d9;
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #161b22;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #30363d;
+            border-radius: 3px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #484f58;
+        }
+
+        .panel-bg {
+            background-color: #161b22;
+            border: 1px solid #30363d;
+        }
+
+        .btn-action {
+            background-color: #21262d;
+            border: 1px solid #30363d;
+            transition: all 0.2s ease-in-out;
+        }
+        .btn-action:hover {
+            background-color: #30363d;
+            border-color: #8b949e;
+        }
+        .btn-primary {
+            background-color: #1f6beb;
+            color: #ffffff;
+        }
+        .btn-primary:hover {
+            background-color: #388bfd;
+        }
+
+        /* Canvas Crosshair cursor */
+        .gpr-canvas-container {
+            position: relative;
+            cursor: crosshair;
+            user-select: none;
+        }
+
+        /* Slider Custom Styling */
+        input[type=range] {
+            accent-color: #388bfd;
+        }
+    </style>
+</head>
+<body class="h-screen flex flex-col overflow-hidden">
+
+    <!-- Header Navigation -->
+    <header class="panel-bg px-4 py-2.5 flex justify-between items-center z-10 border-b border-gray-800">
+        <div class="flex items-center space-x-3 space-x-reverse">
+            <div class="p-2 bg-blue-600/20 text-blue-400 rounded-lg">
+                <i class="fa-solid fa-satellite-dish text-xl"></i>
+            </div>
+            <div>
+                <h1 class="font-bold text-lg text-white leading-tight">معالج صور رادار اختراق الأرض (GPR Processor Pro)</h1>
+                <p class="text-xs text-gray-400">منظومة معالجة وتحليل إشارات القطاعات الرادارية GPR & B-Scan Analysis</p>
+            </div>
+        </div>
+
+        <!-- Header Actions -->
+        <div class="flex items-center space-x-2 space-x-reverse text-xs">
+            <button onclick="document.getElementById('file-input').click()" class="btn-action px-3 py-2 rounded-lg text-white flex items-center space-x-1.5 space-x-reverse">
+                <i class="fa-solid fa-upload text-blue-400"></i>
+                <span>رفع صورة قطاع</span>
+            </button>
+            <input type="file" id="file-input" class="hidden" accept="image/*" onchange="handleFileUpload(event)">
+
+            <button onclick="exportProcessedImage()" class="btn-action px-3 py-2 rounded-lg text-emerald-400 flex items-center space-x-1.5 space-x-reverse">
+                <i class="fa-solid fa-download"></i>
+                <span>تصدير الصورة</span>
+            </button>
+
+            <button onclick="generateReport()" class="btn-action px-3 py-2 rounded-lg text-amber-400 flex items-center space-x-1.5 space-x-reverse">
+                <i class="fa-solid fa-file-contract"></i>
+                <span>تقرير المعالجة</span>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <div class="flex-1 flex overflow-hidden">
+
+        <!-- Sidebar Left: Controls & Filters -->
+        <aside class="w-80 panel-bg flex flex-col h-full overflow-y-auto border-l border-gray-800 text-xs">
+            
+            <!-- Sample Data Selection -->
+            <div class="p-3 border-b border-gray-800">
+                <label class="block font-semibold mb-1.5 text-gray-300">
+                    <i class="fa-solid fa-database ml-1 text-blue-400"></i> عينات رادار افتراضية:
+                </label>
+                <select id="sample-select" onchange="loadSampleDataset(this.value)" class="w-full bg-gray-900 border border-gray-700 rounded p-2 text-gray-200 focus:border-blue-500 focus:outline-none">
+                    <option value="synthetic">قطاع تصنيعي اصطناعي (Synthetic Hyperbolas)</option>
+                    <option value="utilities">كشف البنية التحتية والأنبوب (Utilities & Pipe Search)</option>
+                    <option value="rebar">فحص خرسانة وحديد تسليح (Concrete Rebar Scan)</option>
+                </select>
+            </div>
+
+            <!-- Geophysical & Material Settings -->
+            <div class="p-3 border-b border-gray-800 bg-gray-900/40">
+                <span class="font-bold text-gray-200 block mb-2"><i class="fa-solid fa-layer-group ml-1 text-amber-400"></i> خصائص الوسط والسرعة (Velocity Model)</span>
+                <div class="space-y-2">
+                    <div>
+                        <label class="block text-gray-400 mb-1">نوع الوسط (سماحية الكهربية relative permittivity - Er):</label>
+                        <select id="permittivity-preset" onchange="updatePermittivityPreset(this.value)" class="w-full bg-gray-900 border border-gray-700 rounded p-1.5 text-gray-200">
+                            <option value="9" selected>تربة جافة / Dry Soil (Er ≈ 9, V ≈ 0.10 m/ns)</option>
+                            <option value="6">خرسانة جافة / Dry Concrete (Er ≈ 6, V ≈ 0.12 m/ns)</option>
+                            <option value="16">تربة رطبة / Wet Soil (Er ≈ 16, V ≈ 0.075 m/ns)</option>
+                            <option value="4">أسفلت / Asphalt (Er ≈ 4, V ≈ 0.15 m/ns)</option>
+                            <option value="81">ماء عذب / Water (Er ≈ 81, V ≈ 0.033 m/ns)</option>
+                            <option value="custom">مخصص (Custom)</option>
+                        </select>
+                    </div>
+                    <div class="flex space-x-2 space-x-reverse">
+                        <div class="w-1/2">
+                            <label class="block text-gray-400 text-[10px]">Er (ثابت العزل):</label>
+                            <input type="number" id="er-val" value="9" min="1" max="81" step="0.1" onchange="updateVelocityFromEr()" class="w-full bg-gray-900 border border-gray-700 rounded p-1 text-center text-blue-400 font-mono">
+                        </div>
+                        <div class="w-1/2">
+                            <label class="block text-gray-400 text-[10px]">السرعة (m/ns):</label>
+                            <input type="number" id="velocity-val" value="0.1" min="0.01" max="0.3" step="0.005" onchange="updateErFromVelocity()" class="w-full bg-gray-900 border border-gray-700 rounded p-1 text-center text-emerald-400 font-mono">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Color Palettes / False Color Mapping -->
+            <div class="p-3 border-b border-gray-800">
+                <span class="font-bold text-gray-200 block mb-2"><i class="fa-solid fa-palette ml-1 text-purple-400"></i> لوحة الألوان (Colormap):</span>
+                <div class="grid grid-cols-2 gap-1.5">
+                    <button onclick="setColormap('grayscale')" class="btn-action p-1.5 rounded text-right flex items-center justify-between">
+                        <span>رمادي (B-Scan)</span>
+                        <span class="w-4 h-4 rounded-full bg-gradient-to-r from-black to-white border border-gray-600"></span>
+                    </button>
+                    <button onclick="setColormap('seismic')" class="btn-action p-1.5 rounded text-right flex items-center justify-between">
+                        <span>سيزمي (Red-Blue)</span>
+                        <span class="w-4 h-4 rounded-full bg-gradient-to-r from-red-600 via-white to-blue-600 border border-gray-600"></span>
+                    </button>
+                    <button onclick="setColormap('rainbow')" class="btn-action p-1.5 rounded text-right flex items-center justify-between">
+                        <span>طيف قوس قزح</span>
+                        <span class="w-4 h-4 rounded-full bg-gradient-to-r from-blue-600 via-green-500 to-red-600 border border-gray-600"></span>
+                    </button>
+                    <button onclick="setColormap('copper')" class="btn-action p-1.5 rounded text-right flex items-center justify-between">
+                        <span>حراري (Copper)</span>
+                        <span class="w-4 h-4 rounded-full bg-gradient-to-r from-black via-orange-800 to-yellow-200 border border-gray-600"></span>
+                    </button>
+                    <button onclick="setColormap('viridis')" class="btn-action p-1.5 rounded text-right flex items-center justify-between">
+                        <span>فيريديس Viridis</span>
+                        <span class="w-4 h-4 rounded-full bg-gradient-to-r from-indigo-900 via-teal-500 to-yellow-400 border border-gray-600"></span>
+                    </button>
+                    <button onclick="setColormap('plasma')" class="btn-action p-1.5 rounded text-right flex items-center justify-between">
+                        <span>بلازما Plasma</span>
+                        <span class="w-4 h-4 rounded-full bg-gradient-to-r from-purple-900 via-red-500 to-yellow-300 border border-gray-600"></span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Signal & Image Processing Controls -->
+            <div class="p-3 border-b border-gray-800 space-y-3">
+                <span class="font-bold text-gray-200 block mb-1"><i class="fa-solid fa-sliders ml-1 text-cyan-400"></i> مرشحات ودوال معالجة الإشارة</span>
+
+                <!-- Dewow / DC Offset -->
+                <div>
+                    <div class="flex justify-between text-gray-300 mb-1">
+                        <span>إزالة الانزياح (Dewow / DC Filter):</span>
+                        <span id="dewow-val" class="font-mono text-cyan-400">0</span>
+                    </div>
+                    <input type="range" id="dewow" min="0" max="50" value="0" oninput="applyFilters()" class="w-full">
+                </div>
+
+                <!-- Background Removal Filter -->
+                <div class="p-2 bg-gray-900/60 rounded border border-gray-800">
+                    <label class="flex items-center space-x-2 space-x-reverse cursor-pointer">
+                        <input type="checkbox" id="bg-removal" onchange="applyFilters()" class="rounded border-gray-700 bg-gray-800 text-blue-600 focus:ring-0">
+                        <span class="font-semibold text-gray-200">طرح الخلفية (Background Subtraction)</span>
+                    </label>
+                    <p class="text-[10px] text-gray-400 mt-1">يقلل الضوضاء الأفقية والنعكاسات المباشرة لإظهار الهيبيربولا.</p>
+                </div>
+
+                <!-- Gain Controls (AGC & SEC Gain) -->
+                <div class="space-y-2 border-t border-gray-800 pt-2">
+                    <span class="text-amber-300 font-semibold block">موازنة وتكبير الإشارة (Gain Control):</span>
+                    
+                    <div>
+                        <div class="flex justify-between text-gray-300 mb-1">
+                            <span>كسب التوهج الزمني (Linear Gain):</span>
+                            <span id="gain-val" class="font-mono text-amber-400">1.0x</span>
+                        </div>
+                        <input type="range" id="linear-gain" min="0.5" max="5" step="0.1" value="1.0" oninput="applyFilters()" class="w-full">
+                    </div>
+
+                    <div class="p-2 bg-gray-900/60 rounded border border-gray-800">
+                        <label class="flex items-center space-x-2 space-x-reverse cursor-pointer">
+                            <input type="checkbox" id="agc-enable" onchange="applyFilters()" class="rounded border-gray-700 bg-gray-800 text-blue-600 focus:ring-0">
+                            <span class="font-semibold text-gray-200">التحكم الآلي بالكسب (AGC Gain)</span>
+                        </label>
+                        <div class="mt-1.5 flex justify-between items-center">
+                            <span class="text-[10px] text-gray-400">نافذة الزاد (Window):</span>
+                            <input type="number" id="agc-window" value="20" min="5" max="100" onchange="applyFilters()" class="w-16 bg-gray-800 border border-gray-700 rounded px-1 text-center text-xs">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Spatial Filters -->
+                <div class="space-y-2 border-t border-gray-800 pt-2">
+                    <span class="text-emerald-300 font-semibold block">الفلاتر المكانية والتنعيم:</span>
+                    
+                    <div>
+                        <div class="flex justify-between text-gray-300 mb-1">
+                            <span>تنعيم غاوسي (Gaussian Blur):</span>
+                            <span id="blur-val" class="font-mono text-emerald-400">0px</span>
+                        </div>
+                        <input type="range" id="gaussian-blur" min="0" max="5" step="0.5" value="0" oninput="applyFilters()" class="w-full">
+                    </div>
+
+                    <div>
+                        <div class="flex justify-between text-gray-300 mb-1">
+                            <span>فلتر تحديد الحواف (Sobel Edges):</span>
+                            <span id="sobel-val" class="font-mono text-emerald-400">0%</span>
+                        </div>
+                        <input type="range" id="sobel-edge" min="0" max="100" value="0" oninput="applyFilters()" class="w-full">
+                    </div>
+                </div>
+
+                <!-- Contrast & Brightness -->
+                <div class="space-y-2 border-t border-gray-800 pt-2">
+                    <div class="flex justify-between text-gray-300 mb-1">
+                        <span>السطوع والتباين (Contrast / Brightness):</span>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2">
+                        <div>
+                            <span class="text-[10px] text-gray-400">التباين</span>
+                            <input type="range" id="contrast" min="0.5" max="3" step="0.1" value="1" oninput="applyFilters()" class="w-full">
+                        </div>
+                        <div>
+                            <span class="text-[10px] text-gray-400">السطوع</span>
+                            <input type="range" id="brightness" min="-100" max="100" value="0" oninput="applyFilters()" class="w-full">
+                        </div>
+                    </div>
+                </div>
+
+                <button onclick="resetFilters()" class="w-full btn-action py-2 text-rose-400 rounded flex items-center justify-center space-x-1 space-x-reverse mt-2">
+                    <i class="fa-solid fa-rotate-left"></i>
+                    <span>إعادة ضبط كافة الفلاتر</span>
+                </button>
+            </div>
+        </aside>
+
+        <!-- Center Display Area (Canvas & Crosshair Viewer) -->
+        <main class="flex-1 flex flex-col min-w-0 bg-black relative">
+            
+            <!-- Toolbar for Interactive Tools -->
+            <div class="panel-bg px-4 py-2 flex items-center justify-between border-b border-gray-800">
+                <div class="flex items-center space-x-2 space-x-reverse text-xs">
+                    <span class="text-gray-400 ml-2">أدوات التحليل:</span>
+                    
+                    <button id="tool-pointer" onclick="setActiveTool('pointer')" class="btn-action px-3 py-1.5 rounded active text-blue-400 border-blue-500 flex items-center space-x-1 space-x-reverse">
+                        <i class="fa-solid fa-crosshairs"></i>
+                        <span>مؤشر A-Scan</span>
+                    </button>
+
+                    <button id="tool-hyperbola" onclick="setActiveTool('hyperbola')" class="btn-action px-3 py-1.5 rounded text-gray-300 flex items-center space-x-1 space-x-reverse">
+                        <i class="fa-solid fa-chart-line"></i>
+                        <span>مطابقة الهيبيربولا (Velocity Fit)</span>
+                    </button>
+
+                    <button id="tool-marker" onclick="setActiveTool('marker')" class="btn-action px-3 py-1.5 rounded text-gray-300 flex items-center space-x-1 space-x-reverse">
+                        <i class="fa-solid fa-location-dot"></i>
+                        <span>إضافة علامة هدف</span>
+                    </button>
+
+                    <button onclick="clearAnnotations()" class="btn-action px-2 py-1.5 rounded text-rose-400" title="مسح التوضيحات">
+                        <i class="fa-solid fa-trash-can"></i>
+                    </button>
+                </div>
+
+                <div class="flex items-center space-x-4 space-x-reverse text-xs font-mono">
+                    <div id="cursor-pos-x" class="text-gray-300">مسافة X: <span class="text-blue-400">0.00m</span></div>
+                    <div id="cursor-pos-time" class="text-gray-300">الزمن TWT: <span class="text-amber-400">0.0 ns</span></div>
+                    <div id="cursor-pos-depth" class="text-gray-300">العمق Depth: <span class="text-emerald-400">0.00m</span></div>
+                </div>
+            </div>
+
+            <!-- Main Canvas Box -->
+            <div class="flex-1 flex items-center justify-center p-4 overflow-auto relative gpr-canvas-container" id="canvas-wrapper">
+                <div class="relative border border-gray-800 shadow-2xl bg-gray-950">
+                    <!-- Rulers Display -->
+                    <canvas id="gpr-canvas" class="max-w-full max-h-[70vh] block"></canvas>
+                    <canvas id="overlay-canvas" class="absolute top-0 left-0 pointer-events-none max-w-full max-h-[70vh]"></canvas>
+                </div>
+            </div>
+
+            <!-- Bottom Panel: A-Scan Single Trace Waveform Plot -->
+            <div class="h-44 panel-bg border-t border-gray-800 p-2 flex flex-col">
+                <div class="flex justify-between items-center px-2 mb-1">
+                    <span class="text-xs font-bold text-blue-400 flex items-center">
+                        <i class="fa-solid fa-wave-square ml-1.5"></i>
+                        منحنى سعة الإشارة الرادارية A-Scan (عند المسافة المختارة):
+                    </span>
+                    <span id="ascan-trace-num" class="text-[11px] font-mono text-gray-400">Trace: #0</span>
+                </div>
+                <div class="flex-1 relative w-full h-full">
+                    <canvas id="ascan-chart"></canvas>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Modal for Generating Report -->
+    <div id="report-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm hidden flex items-center justify-center z-50 p-4">
+        <div class="panel-bg rounded-xl border border-gray-700 max-w-2xl w-full p-6 text-right space-y-4 max-h-[90vh] overflow-y-auto">
+            <div class="flex justify-between items-center border-b border-gray-800 pb-3">
+                <h3 class="text-lg font-bold text-white flex items-center">
+                    <i class="fa-solid fa-file-invoice text-amber-400 ml-2"></i>
+                    تقرير تحليل واختبار القطاع الراداري (GPR Inspection Report)
+                </h3>
+                <button onclick="closeReport()" class="text-gray-400 hover:text-white text-xl">&times;</button>
+            </div>
+            
+            <div id="report-content" class="space-y-3 text-xs text-gray-300">
+                <!-- Dynamically filled by JS -->
+            </div>
+
+            <div class="flex justify-end space-x-2 space-x-reverse border-t border-gray-800 pt-3">
+                <button onclick="window.print()" class="btn-primary px-4 py-2 rounded text-xs flex items-center space-x-1 space-x-reverse">
+                    <i class="fa-solid fa-print"></i>
+                    <span>طباعة التقرير</span>
+                </button>
+                <button onclick="closeReport()" class="btn-action px-4 py-2 rounded text-xs">إغلاق</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- JavaScript Signal Processing & GPR Logic -->
+    <script>
+        // System Global State Variables
+        let originalImageData = null;
+        let processedImageData = null;
+        let canvas, ctx, overlayCanvas, overlayCtx;
+        let ascanChart = null;
+
+        // Active Tool
+        let activeTool = 'pointer'; // 'pointer', 'hyperbola', 'marker'
+        let annotations = []; // Hyperbolas and markers stored here
+        let currentMousePos = { x: 0, y: 0 };
+
+        // Geophysical Parameters
+        let dielectricPermittivity = 9.0; // Er
+        let velocityNs = 0.1; // m/ns
+        let totalTimeNs = 50; // Two-way time window (ns)
+        let totalDistanceMeters = 10; // Profile length (meters)
+
+        // Colormap Active State
+        let activeColormap = 'seismic';
+
+        // Initialize App on Window Load
+        window.onload = function() {
+            canvas = document.getElementById('gpr-canvas');
+            ctx = canvas.getContext('2d');
+            overlayCanvas = document.getElementById('overlay-canvas');
+            overlayCtx = overlayCanvas.getContext('2d');
+
+            initAscanChart();
+            loadSampleDataset('synthetic');
+            setupCanvasEvents();
+        };
+
+        // Initialize Chart.js for A-Scan Waveform Display
+        function initAscanChart() {
+            const chartCtx = document.getElementById('ascan-chart').getContext('2d');
+            ascanChart = new Chart(chartCtx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'سعة الإشارة (Amplitude)',
+                        data: [],
+                        borderColor: '#388bfd',
+                        borderWidth: 1.5,
+                        pointRadius: 0,
+                        fill: false,
+                        tension: 0.1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    animation: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: {
+                            grid: { color: '#21262d' },
+                            ticks: { color: '#8b949e', font: { size: 9 } },
+                            title: { display: true, text: 'زمن الانعكاس / Depth (ns)', color: '#8b949e', font: { size: 10 } }
+                        },
+                        y: {
+                            grid: { color: '#21262d' },
+                            ticks: { color: '#8b949e', font: { size: 9 } },
+                            min: -255,
+                            max: 255
+                        }
+                    }
+                }
+            });
+        }
+
+        // Generate Synthetic / Sample GPR Datasets
+        function loadSampleDataset(type) {
+            const width = 600;
+            const height = 400;
+            canvas.width = width;
+            canvas.height = height;
+            overlayCanvas.width = width;
+            overlayCanvas.height = height;
+
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = width;
+            tempCanvas.height = height;
+            const tempCtx = tempCanvas.getContext('2d');
+
+            // Background direct wave / ground bounce at top
+            const imgData = tempCtx.createImageData(width, height);
+            const data = imgData.data;
+
+            // Generate synthetic radargram values
+            for (let y = 0; y < height; y++) {
+                for (let x = 0; x < width; x++) {
+                    let idx = (y * width + x) * 4;
+                    let val = 0;
+
+                    // Direct ground wave (high amplitude horizontally)
+                    if (y > 20 && y < 40) {
+                        val += Math.sin((y - 20) * 0.3) * 180 * Math.exp(-Math.pow(x % 30 - 15, 2) / 200);
+                    }
+
+                    if (type === 'synthetic' || type === 'utilities') {
+                        // Hyperbola 1 (Utility pipe)
+                        let x0 = 200, y0 = 180, v = 12;
+                        let dt = Math.sqrt(Math.pow(y - y0, 2) + Math.pow((x - x0) * v / 10, 2));
+                        if (dt < 25) {
+                            val += Math.cos(dt * 0.5) * 200 * Math.exp(-dt / 15);
+                        }
+
+                        // Hyperbola 2 (Deeper target)
+                        let x1 = 420, y1 = 280;
+                        let dt2 = Math.sqrt(Math.pow(y - y1, 2) + Math.pow((x - x1) * v / 10, 2));
+                        if (dt2 < 30) {
+                            val += Math.cos(dt2 * 0.4) * 160 * Math.exp(-dt2 / 20);
+                        }
+                    }
+
+                    if (type === 'rebar') {
+                        // Rebar pattern (Multiple hyperbolas near surface)
+                        for (let rx = 60; rx < width; rx += 80) {
+                            let ry = 120;
+                            let dtR = Math.sqrt(Math.pow(y - ry, 2) + Math.pow((x - rx) * 1.5, 2));
+                            if (dtR < 20) {
+                                val += Math.cos(dtR * 0.6) * 220 * Math.exp(-dtR / 10);
+                            }
+                        }
+                    }
+
+                    // Add synthetic soil noise
+                    val += (Math.random() - 0.5) * 35;
+
+                    // Normalize to 0-255 range
+                    let pixelVal = Math.min(255, Math.max(0, val + 128));
+
+                    data[idx] = pixelVal;
+                    data[idx + 1] = pixelVal;
+                    data[idx + 2] = pixelVal;
+                    data[idx + 3] = 255;
+                }
+            }
+
+            tempCtx.putImageData(imgData, 0, 0);
+            originalImageData = tempCtx.getImageData(0, 0, width, height);
+            applyFilters();
+        }
+
+        // Image Upload Handling
+        function handleFileUpload(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                const img = new Image();
+                img.onload = function() {
+                    canvas.width = img.width;
+                    canvas.height = img.height;
+                    overlayCanvas.width = img.width;
+                    overlayCanvas.height = img.height;
+
+                    ctx.drawImage(img, 0, 0);
+                    originalImageData = ctx.getImageData(0, 0, img.width, img.height);
+                    applyFilters();
+                };
+                img.src = event.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        // Apply Signal & Image Processing Filters Chain
+        function applyFilters() {
+            if (!originalImageData) return;
+
+            const width = originalImageData.width;
+            const height = originalImageData.height;
+            
+            // Create working pixel buffer
+            const src = originalImageData.data;
+            let workBuffer = new Float32Array(width * height);
+
+            // Convert to single channel amplitude (-128 to 127)
+            for (let i = 0; i < workBuffer.length; i++) {
+                workBuffer[i] = src[i * 4] - 128;
+            }
+
+            // 1. Dewow / DC Offset Correction
+            const dewowVal = parseFloat(document.getElementById('dewow').value);
+            document.getElementById('dewow-val').innerText = dewowVal;
+            if (dewowVal > 0) {
+                for (let x = 0; x < width; x++) {
+                    let mean = 0;
+                    for (let y = 0; y < height; y++) {
+                        mean += workBuffer[y * width + x];
+                    }
+                    mean /= height;
+                    for (let y = 0; y < height; y++) {
+                        workBuffer[y * width + x] -= mean * (dewowVal / 50);
+                    }
+                }
+            }
+
+            // 2. Background Removal (Average Trace Subtraction)
+            const bgRemove = document.getElementById('bg-removal').checked;
+            if (bgRemove) {
+                let traceAvg = new Float32Array(height);
+                for (let y = 0; y < height; y++) {
+                    let sum = 0;
+                    for (let x = 0; x < width; x++) {
+                        sum += workBuffer[y * width + x];
+                    }
+                    traceAvg[y] = sum / width;
+                }
+
+                for (let y = 0; y < height; y++) {
+                    for (let x = 0; x < width; x++) {
+                        workBuffer[y * width + x] -= traceAvg[y];
+                    }
+                }
+            }
+
+            // 3. Gain Control (Linear / SEC & AGC)
+            const linearGain = parseFloat(document.getElementById('linear-gain').value);
+            document.getElementById('gain-val').innerText = linearGain.toFixed(1) + 'x';
+            
+            const agcEnabled = document.getElementById('agc-enable').checked;
+            const agcWin = parseInt(document.getElementById('agc-window').value);
+
+            for (let x = 0; x < width; x++) {
+                for (let y = 0; y < height; y++) {
+                    let idx = y * width + x;
+                    
+                    // Linear SEC gain (increases with depth)
+                    let depthGain = 1 + (y / height) * (linearGain - 1);
+                    workBuffer[idx] *= depthGain;
+
+                    // AGC Gain
+                    if (agcEnabled) {
+                        let winStart = Math.max(0, y - Math.floor(agcWin / 2));
+                        let winEnd = Math.min(height - 1, y + Math.floor(agcWin / 2));
+                        let rms = 0;
+                        for (let wy = winStart; wy <= winEnd; wy++) {
+                            rms += Math.pow(workBuffer[wy * width + x], 2);
+                        }
+                        rms = Math.sqrt(rms / (winEnd - winStart + 1)) + 0.001;
+                        workBuffer[idx] = (workBuffer[idx] / rms) * 35;
+                    }
+                }
+            }
+
+            // 4. Brightness & Contrast
+            const contrast = parseFloat(document.getElementById('contrast').value);
+            const brightness = parseFloat(document.getElementById('brightness').value);
+
+            for (let i = 0; i < workBuffer.length; i++) {
+                workBuffer[i] = (workBuffer[i] * contrast) + brightness;
+            }
+
+            // Render Output Canvas with Selected False Colormap
+            const outputImage = ctx.createImageData(width, height);
+            const outData = outputImage.data;
+
+            for (let i = 0; i < workBuffer.length; i++) {
+                let val = Math.min(255, Math.max(0, workBuffer[i] + 128));
+                let color = getColormapRGB(val, activeColormap);
+
+                let outIdx = i * 4;
+                outData[outIdx] = color.r;
+                outData[outIdx + 1] = color.g;
+                outData[outIdx + 2] = color.b;
+                outData[outIdx + 3] = 255;
+            }
+
+            ctx.putImageData(outputImage, 0, 0);
+            processedImageData = ctx.getImageData(0, 0, width, height);
+
+            // Apply CSS Gaussian Blur filter if set
+            const blurVal = parseFloat(document.getElementById('gaussian-blur').value);
+            document.getElementById('blur-val').innerText = blurVal + 'px';
+            canvas.style.filter = `blur(${blurVal}px)`;
+
+            // Update A-Scan Plot for current selected trace
+            updateAscanChart(Math.floor(currentMousePos.x));
+            redrawOverlay();
+        }
+
+        // Color Mapping Transformations
+        function setColormap(cmap) {
+            activeColormap = cmap;
+            applyFilters();
+        }
+
+        function getColormapRGB(val, mapName) {
+            let norm = val / 255; // 0.0 to 1.0
+
+            if (mapName === 'grayscale') {
+                return { r: val, g: val, b: val };
+            } else if (mapName === 'seismic') {
+                // Bipolar Red-White-Blue
+                if (norm < 0.5) {
+                    let b = 255;
+                    let r = Math.floor(norm * 2 * 255);
+                    let g = r;
+                    return { r: r, g: g, b: b };
+                } else {
+                    let r = 255;
+                    let b = Math.floor((1 - norm) * 2 * 255);
+                    let g = b;
+                    return { r: r, g: g, b: b };
+                }
+            } else if (mapName === 'rainbow') {
+                let h = (1 - norm) * 240; // Hue 240 (blue) down to 0 (red)
+                return hslToRgb(h / 360, 1, 0.5);
+            } else if (mapName === 'copper') {
+                return {
+                    r: Math.min(255, val * 1.25),
+                    g: Math.min(255, val * 0.78),
+                    b: Math.min(255, val * 0.5)
+                };
+            } else if (mapName === 'viridis') {
+                return {
+                    r: Math.floor(Math.sin(norm * Math.PI) * 255),
+                    g: Math.floor(norm * 220),
+                    b: Math.floor((1 - norm) * 200 + 55)
+                };
+            } else if (mapName === 'plasma') {
+                return {
+                    r: Math.floor(norm * 255),
+                    g: Math.floor(Math.sin(norm * Math.PI) * 180),
+                    b: Math.floor((1 - norm) * 255)
+                };
+            }
+
+            return { r: val, g: val, b: val };
+        }
+
+        function hslToRgb(h, s, l) {
+            let r, g, b;
+            if (s === 0) {
+                r = g = b = l;
+            } else {
+                const hue2rgb = (p, q, t) => {
+                    if (t < 0) t += 1;
+                    if (t > 1) t -= 1;
+                    if (t < 1/6) return p + (q - p) * 6 * t;
+                    if (t < 1/2) return q;
+                    if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+                    return p;
+                };
+                const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+                const p = 2 * l - q;
+                r = hue2rgb(p, q, h + 1/3);
+                g = hue2rgb(p, q, h);
+                b = hue2rgb(p, q, h - 1/3);
+            }
+            return { r: Math.round(r * 255), g: Math.round(g * 255), b: Math.round(b * 255) };
+        }
+
+        // Permittivity & Velocity Calculations
+        function updatePermittivityPreset(val) {
+            if (val !== 'custom') {
+                dielectricPermittivity = parseFloat(val);
+                document.getElementById('er-val').value = dielectricPermittivity;
+                velocityNs = 0.3 / Math.sqrt(dielectricPermittivity); // Velocity in m/ns (c = 0.3 m/ns)
+                document.getElementById('velocity-val').value = velocityNs.toFixed(3);
+                redrawOverlay();
+            }
+        }
+
+        function updateVelocityFromEr() {
+            dielectricPermittivity = parseFloat(document.getElementById('er-val').value);
+            velocityNs = 0.3 / Math.sqrt(dielectricPermittivity);
+            document.getElementById('velocity-val').value = velocityNs.toFixed(3);
+            document.getElementById('permittivity-preset').value = 'custom';
+            redrawOverlay();
+        }
+
+        function updateErFromVelocity() {
+            velocityNs = parseFloat(document.getElementById('velocity-val').value);
+            dielectricPermittivity = Math.pow(0.3 / velocityNs, 2);
+            document.getElementById('er-val').value = dielectricPermittivity.toFixed(1);
+            document.getElementById('permittivity-preset').value = 'custom';
+            redrawOverlay();
+        }
+
+        // Canvas Cursor & Interaction Handling
+        function setupCanvasEvents() {
+            const container = document.getElementById('canvas-wrapper');
+
+            canvas.addEventListener('mousemove', (e) => {
+                const rect = canvas.getBoundingClientRect();
+                const scaleX = canvas.width / rect.width;
+                const scaleY = canvas.height / rect.height;
+
+                currentMousePos.x = (e.clientX - rect.left) * scaleX;
+                currentMousePos.y = (e.clientY - rect.top) * scaleY;
+
+                // Calculate GPR Geophysical Values
+                let distanceMeters = (currentMousePos.x / canvas.width) * totalDistanceMeters;
+                let twtNs = (currentMousePos.y / canvas.height) * totalTimeNs;
+                let depthMeters = (twtNs * velocityNs) / 2; // Depth = (v * t)/2
+
+                document.getElementById('cursor-pos-x').innerHTML = `مسافة X: <span class="text-blue-400">${distanceMeters.toFixed(2)}m</span>`;
+                document.getElementById('cursor-pos-time').innerHTML = `الزمن TWT: <span class="text-amber-400">${twtNs.toFixed(1)} ns</span>`;
+                document.getElementById('cursor-pos-depth').innerHTML = `العمق Depth: <span class="text-emerald-400">${depthMeters.toFixed(2)}m</span>`;
+
+                updateAscanChart(Math.floor(currentMousePos.x));
+                redrawOverlay();
+            });
+
+            canvas.addEventListener('click', (e) => {
+                if (activeTool === 'hyperbola') {
+                    // Add fitted hyperbola target
+                    annotations.push({
+                        type: 'hyperbola',
+                        x: currentMousePos.x,
+                        y: currentMousePos.y,
+                        velocity: velocityNs
+                    });
+                } else if (activeTool === 'marker') {
+                    // Add point marker
+                    let markerLabel = prompt("أدخل اسم أو وصف الهدف (مثال: أنبوب مياه / حديد تسليح):", "هدف راداري");
+                    if (markerLabel) {
+                        annotations.push({
+                            type: 'marker',
+                            x: currentMousePos.x,
+                            y: currentMousePos.y,
+                            label: markerLabel
+                        });
+                    }
+                }
+                redrawOverlay();
+            });
+        }
+
+        // Redraw Hyperbolas, Markers, Crosshair on Canvas Overlay
+        function redrawOverlay() {
+            overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+
+            // Draw Crosshair lines
+            overlayCtx.strokeStyle = 'rgba(56, 139, 253, 0.6)';
+            overlayCtx.lineWidth = 1;
+            overlayCtx.setLineDash([4, 4]);
+
+            // Vertical line
+            overlayCtx.beginPath();
+            overlayCtx.moveTo(currentMousePos.x, 0);
+            overlayCtx.lineTo(currentMousePos.x, overlayCanvas.height);
+            overlayCtx.stroke();
+
+            // Horizontal line
+            overlayCtx.beginPath();
+            overlayCtx.moveTo(0, currentMousePos.y);
+            overlayCtx.lineTo(overlayCanvas.width, currentMousePos.y);
+            overlayCtx.stroke();
+            overlayCtx.setLineDash([]);
+
+            // Draw Hyperbola Fitting Preview on Cursor in Hyperbola Tool mode
+            if (activeTool === 'hyperbola') {
+                drawHyperbolaShape(overlayCtx, currentMousePos.x, currentMousePos.y, velocityNs, '#f59e0b', true);
+            }
+
+            // Draw Saved Annotations
+            annotations.forEach(ann => {
+                if (ann.type === 'hyperbola') {
+                    drawHyperbolaShape(overlayCtx, ann.x, ann.y, ann.velocity, '#10b981', false);
+                } else if (ann.type === 'marker') {
+                    overlayCtx.fillStyle = '#ef4444';
+                    overlayCtx.beginPath();
+                    overlayCtx.arc(ann.x, ann.y, 6, 0, Math.PI * 2);
+                    overlayCtx.fill();
+                    overlayCtx.strokeStyle = '#ffffff';
+                    overlayCtx.lineWidth = 1.5;
+                    overlayCtx.stroke();
+
+                    overlayCtx.font = '11px Tajawal';
+                    overlayCtx.fillStyle = '#ffffff';
+                    overlayCtx.fillText(ann.label, ann.x + 10, ann.y + 4);
+                }
+            });
+        }
+
+        // Draw Interactive Physics Hyperbola
+        function drawHyperbolaShape(context, x0, y0, v, color, isDashed) {
+            context.strokeStyle = color;
+            context.lineWidth = 2;
+            if (isDashed) context.setLineDash([3, 3]);
+
+            context.beginPath();
+            let pxPerMeter = canvas.width / totalDistanceMeters;
+            let pxPerNs = canvas.height / totalTimeNs;
+
+            // Hyperbola Equation: t^2 = t0^2 + (4 * x^2) / v^2
+            let t0 = y0 / pxPerNs;
+
+            for (let dx = -100; dx <= 100; dx += 2) {
+                let xMeters = dx / pxPerMeter;
+                let tNs = Math.sqrt(Math.pow(t0, 2) + (4 * Math.pow(xMeters, 2)) / Math.pow(v, 2));
+                let drawX = x0 + dx;
+                let drawY = tNs * pxPerNs;
+
+                if (dx === -100) context.moveTo(drawX, drawY);
+                else context.lineTo(drawX, drawY);
+            }
+            context.stroke();
+            context.setLineDash([]);
+        }
+
+        // Update Single Trace A-Scan Chart
+        function updateAscanChart(traceX) {
+            if (!processedImageData || traceX < 0 || traceX >= canvas.width) return;
+
+            document.getElementById('ascan-trace-num').innerText = `Trace: #${traceX}`;
+            const height = canvas.height;
+            const labels = [];
+            const dataPoints = [];
+
+            const data = processedImageData.data;
+
+            for (let y = 0; y < height; y += 2) {
+                let idx = (y * canvas.width + traceX) * 4;
+                let amp = data[idx] - 128; // Center at 0
+                let timeNs = (y / height) * totalTimeNs;
+
+                labels.push(timeNs.toFixed(1));
+                dataPoints.push(amp);
+            }
+
+            ascanChart.data.labels = labels;
+            ascanChart.data.datasets[0].data = dataPoints;
+            ascanChart.update('none');
+        }
+
+        // Tool Selection
+        function setActiveTool(tool) {
+            activeTool = tool;
+            ['pointer', 'hyperbola', 'marker'].forEach(t => {
+                const btn = document.getElementById(`tool-${t}`);
+                if (t === tool) {
+                    btn.classList.add('active', 'text-blue-400', 'border-blue-500');
+                    btn.classList.remove('text-gray-300');
+                } else {
+                    btn.classList.remove('active', 'text-blue-400', 'border-blue-500');
+                    btn.classList.add('text-gray-300');
+                }
+            });
+            redrawOverlay();
+        }
+
+        function clearAnnotations() {
+            annotations = [];
+            redrawOverlay();
+        }
+
+        function resetFilters() {
+            document.getElementById('dewow').value = 0;
+            document.getElementById('bg-removal').checked = false;
+            document.getElementById('linear-gain').value = 1.0;
+            document.getElementById('agc-enable').checked = false;
+            document.getElementById('gaussian-blur').value = 0;
+            document.getElementById('sobel-edge').value = 0;
+            document.getElementById('contrast').value = 1.0;
+            document.getElementById('brightness').value = 0;
+            applyFilters();
+        }
+
+        // Export Processed Image
+        function exportProcessedImage() {
+            // Composite processed image with overlay annotations
+            const exportCanvas = document.createElement('canvas');
+            exportCanvas.width = canvas.width;
+            exportCanvas.height = canvas.height;
+            const expCtx = exportCanvas.getContext('2d');
+
+            expCtx.drawImage(canvas, 0, 0);
+            expCtx.drawImage(overlayCanvas, 0, 0);
+
+            const link = document.createElement('a');
+            link.download = 'GPR_Processed_Radargram.png';
+            link.href = exportCanvas.toDataURL('image/png');
+            link.click();
+        }
+
+        // Generate Detailed Geophysical Inspection Report
+        function generateReport() {
+            const reportContent = document.getElementById('report-content');
+            const now = new Date().toLocaleString('ar-EG');
+
+            reportContent.innerHTML = `
+                <div class="p-3 bg-gray-900 rounded border border-gray-800 space-y-2">
+                    <p><strong>تاريخ المعالجة:</strong> ${now}</p>
+                    <p><strong>أبعاد القطاع:</strong> ${canvas.width} px (أفقياً) × ${canvas.height} px (عمقاً)</p>
+                    <p><strong>ثابت العزل الكهربائي (Er):</strong> ${dielectricPermittivity} | <strong>السرعة المحسوبة:</strong> ${velocityNs} m/ns</p>
+                    <p><strong>لوحة الألوان المطبقة:</strong> ${activeColormap.toUpperCase()}</p>
+                    <p><strong>الفلاتر المطبقة:</strong> 
+                        ${document.getElementById('bg-removal').checked ? 'طرح الخلفية (Background Removal) | ' : ''}
+                        ${document.getElementById('agc-enable').checked ? 'كسب AGC آلي | ' : ''}
+                        Dewow: ${document.getElementById('dewow').value}
+                    </p>
+                </div>
+
+                <div class="space-y-1">
+                    <h4 class="font-bold text-emerald-400">الأهداف المكتشفة والمعالم (Annotations Summary):</h4>
+                    ${annotations.length === 0 ? '<p class="text-gray-500">لم يتم تحديد أهداف بإنحناء هيبيربولا أو علامات بعد.</p>' : ''}
+                    <ul class="list-disc list-inside space-y-1 text-gray-300">
+                        ${annotations.map((ann, idx) => `
+                            <li>
+                                ${ann.type === 'hyperbola' ? `هيبيربولا target #${idx + 1}: موقع X=${((ann.x / canvas.width) * totalDistanceMeters).toFixed(2)}m, العمق=${(((ann.y / canvas.height) * totalTimeNs * ann.velocity) / 2).toFixed(2)}m (سرعة ${ann.velocity} m/ns)` : ''}
+                                ${ann.type === 'marker' ? `علامة هدف: "${ann.label}" عند X=${((ann.x / canvas.width) * totalDistanceMeters).toFixed(2)}m` : ''}
+                            </li>
+                        `).join('')}
+                    </ul>
+                </div>
+            `;
+
+            document.getElementById('report-modal').classList.remove('hidden');
+        }
+
+        function closeReport() {
+            document.getElementById('report-modal').classList.add('hidden');
+        }
+    </script>
+</body>
+</html>
